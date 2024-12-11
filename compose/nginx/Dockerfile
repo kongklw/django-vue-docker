@@ -16,8 +16,8 @@ FROM nginx:latest
 RUN rm /etc/nginx/conf.d/default.conf \
 && mkdir -p /var/www/html
 
-#RUN chown -R www-data:www-data /var/www/html \
-#&& chmod -R 777 /var/www/html
+RUN chown -R www-data:www-data /var/www/html \
+&& chmod -R 777 /var/www/html
 
 # 添加配置文件
 ADD default.conf /etc/nginx/conf.d/
