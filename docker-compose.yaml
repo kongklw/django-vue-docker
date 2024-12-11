@@ -49,7 +49,7 @@ services:
       - "8000"
     volumes:
       - ./kdemo:/home/kdemo # 挂载项目代码
-      - frontend_vol:/home/kdemo/kdemo-fe/dist
+      - frontend_vol:/home/kdemo/frontend/dist
       #- static_vol:/home/kdemo/static # 以数据卷挂载容器内static文件
       #- media_vol:/home/kdemo/media # 以数据卷挂载容器内用户上传媒体文件
       - ./compose/uwsgi:/tmp # 挂载uwsgi日志
