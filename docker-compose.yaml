@@ -3,8 +3,8 @@ version: "3"
 volumes: # 自定义数据卷
   db_vol: #定义数据卷同步存放容器内mysql数据
   redis_vol: #定义数据卷同步存放redis数据
-  #media_vol: #定义数据卷同步存放web项目用户上传到media文件夹的数据
-  #static_vol: #定义数据卷同步存放web项目static文件夹的数据
+  media_vol: #定义数据卷同步存放web项目用户上传到media文件夹的数据
+  static_vol: #定义数据卷同步存放web项目static文件夹的数据
   frontend_vol:
 
 networks: # 自定义网络(默认桥接), 不使用links通信
@@ -50,8 +50,8 @@ services:
     volumes:
       - ./kdemo:/home/kdemo # 挂载项目代码
       - frontend_vol:/home/kdemo/frontend/dist
-      #- static_vol:/home/kdemo/static # 以数据卷挂载容器内static文件
-      #- media_vol:/home/kdemo/media # 以数据卷挂载容器内用户上传媒体文件
+      - static_vol:/home/kdemo/static # 以数据卷挂载容器内static文件
+      - media_vol:/home/kdemo/media # 以数据卷挂载容器内用户上传媒体文件
       - ./compose/uwsgi:/tmp # 挂载uwsgi日志
     networks:
       - nginx_network
@@ -76,8 +76,8 @@ services:
       - ./compose/nginx/ssl:/usr/share/nginx/ssl # 挂载ssl证书目录
       - ./compose/nginx/log:/var/log/nginx # 挂载日志
       - frontend_vol:/usr/share/nginx/html # 挂载前端静态文件
-      #- static_vol:/usr/share/nginx/html/static # 挂载静态文件
-      #- media_vol:/usr/share/nginx/html/media # 挂载用户上传媒体文件
+      - static_vol:/usr/share/nginx/html/static # 挂载静态文件
+      - media_vol:/usr/share/nginx/html/media # 挂载用户上传媒体文件
     networks:
       - nginx_network
     depends_on:
