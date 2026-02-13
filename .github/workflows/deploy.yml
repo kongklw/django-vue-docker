@@ -1,0 +1,85 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'kdemo-fe/**'
+      - 'kdemo/**'
+      - 'docker-compose.yaml'
+      - '.github/workflows/deploy.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # ----------------------------------------------------------------
+      # 1. 前端构建 (Frontend Build)
+      # ----------------------------------------------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Install Frontend Dependencies
+        working-directory: ./kdemo-fe
+        run: npm install
+
+      - name: Build Frontend
+        working-directory: ./kdemo-fe
+        run: npm run build:prod
+
+      - name: Zip Frontend Dist
+        working-directory: ./kdemo-fe
+        # 压缩 dist 目录为 dist.zip
+        # 解压后会包含 dist/ 目录结构，适配 start.sh 的逻辑
+        run: zip -r dist.zip dist/
+
+      # ----------------------------------------------------------------
+      # 2. 部署到服务器 (Deploy to Server)
+      # ----------------------------------------------------------------
+      
+      # 步骤 2.1: 将构建好的 dist.zip 传输到服务器
+      - name: Upload Frontend Artifact to Server
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          # port: ${{ secrets.SSH_PORT }} # 如果不是 22 端口，请取消注释并配置
+          source: "kdemo-fe/dist.zip"
+          target: "${{ secrets.PROJECT_PATH }}/kdemo/frontend/"
+          strip_components: 1 # 去掉 kdemo-fe/ 前缀，直接把 dist.zip 放到 target 目录
+
+      # 步骤 2.2: SSH 登录服务器，拉取最新后端代码并重启
+      - name: Update Backend and Restart
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          # port: ${{ secrets.SSH_PORT }}
+          script: |
+            # 进入项目目录
+            cd ${{ secrets.PROJECT_PATH }}
+            
+            # 拉取最新代码 (主要是后端 Python 代码和配置)
+            # 注意：如果本地有修改未提交，git pull 可能会失败。这里假设服务器代码是干净的。
+            git pull origin main
+            
+            # 重启 web 容器
+            # 这会触发 start.sh:
+            # 1. 检测到 MySQL
+            # 2. 解压 kdemo/frontend/dist.zip (刚才 scp 上传的)
+            # 3. 执行 pip install (如果 requirements.txt 变了)
+            # 4. 执行 migrate
+            # 5. 启动 uWSGI
+            docker-compose restart web
+            
+            # 可选: 清理未使用的镜像
+            # docker image prune -f
