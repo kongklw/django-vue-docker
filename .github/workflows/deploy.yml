@@ -5,11 +5,10 @@ on:
     branches:
       - main
       - master
-    paths:
-      - 'kdemo-fe/**'
-      - 'kdemo/**'
-      - 'docker-compose.yaml'
-      - '.github/workflows/deploy.yml'
+    paths-ignore:
+      - 'README.md'
+      - 'LICENSE'
+      - '.gitignore'
 
 jobs:
   deploy:
@@ -19,22 +18,28 @@ jobs:
         uses: actions/checkout@v3
 
       # ----------------------------------------------------------------
-      # 1. 前端构建 (Frontend Build)
+      # 1. 前端处理 (Frontend Handling)
+      #    如果是 django-vue-docker 这种 monorepo 结构，或者 kdemo-fe 独立仓库推送
+      #    这里假设这是 monorepo 或者包含 kdemo-fe 目录
       # ----------------------------------------------------------------
       - name: Setup Node.js
+        if: hashFiles('kdemo-fe/package.json') != ''
         uses: actions/setup-node@v3
         with:
           node-version: '16'
 
       - name: Install Frontend Dependencies
+        if: hashFiles('kdemo-fe/package.json') != ''
         working-directory: ./kdemo-fe
         run: npm install
 
       - name: Build Frontend
+        if: hashFiles('kdemo-fe/package.json') != ''
         working-directory: ./kdemo-fe
         run: npm run build:prod
 
       - name: Zip Frontend Dist
+        if: hashFiles('kdemo-fe/package.json') != ''
         working-directory: ./kdemo-fe
         # 压缩 dist 目录为 dist.zip
         # 解压后会包含 dist/ 目录结构，适配 start.sh 的逻辑
@@ -44,20 +49,21 @@ jobs:
       # 2. 部署到服务器 (Deploy to Server)
       # ----------------------------------------------------------------
       
-      # 步骤 2.1: 将构建好的 dist.zip 传输到服务器
+      # 步骤 2.1: 如果有前端构建产物，上传到服务器
       - name: Upload Frontend Artifact to Server
+        if: hashFiles('kdemo-fe/dist.zip') != ''
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          # port: ${{ secrets.SSH_PORT }} # 如果不是 22 端口，请取消注释并配置
+          # port: ${{ secrets.SSH_PORT }}
           source: "kdemo-fe/dist.zip"
           target: "${{ secrets.PROJECT_PATH }}/kdemo/frontend/"
-          strip_components: 1 # 去掉 kdemo-fe/ 前缀，直接把 dist.zip 放到 target 目录
+          strip_components: 1 # 去掉 kdemo-fe/ 前缀
 
-      # 步骤 2.2: SSH 登录服务器，拉取最新后端代码并重启
-      - name: Update Backend and Restart
+      # 步骤 2.2: SSH 登录服务器，拉取最新代码并只重启 Web 容器
+      - name: Update Code and Restart Web
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -65,21 +71,32 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           # port: ${{ secrets.SSH_PORT }}
           script: |
-            # 进入项目目录
+            # 1. 进入主部署目录 (django-vue-docker)
             cd ${{ secrets.PROJECT_PATH }}
             
-            # 拉取最新代码 (主要是后端 Python 代码和配置)
-            # 注意：如果本地有修改未提交，git pull 可能会失败。这里假设服务器代码是干净的。
-            git pull origin main
+            # 2. 拉取主编排仓库的更新 (如果有)
+            git pull origin main || true
             
-            # 重启 web 容器
-            # 这会触发 start.sh:
-            # 1. 检测到 MySQL
-            # 2. 解压 kdemo/frontend/dist.zip (刚才 scp 上传的)
-            # 3. 执行 pip install (如果 requirements.txt 变了)
-            # 4. 执行 migrate
-            # 5. 启动 uWSGI
+            # 3. 处理子模块/独立仓库更新
+            # 既然你的 GitHub 上显示 kdemo 和 kdemo-fe 是独立仓库
+            # 那么服务器上的目录结构应该是:
+            # django-vue-docker/
+            #   ├── kdemo/ (这应该是一个独立的 git repo)
+            #   ├── kdemo-fe/ (这应该是一个独立的 git repo)
+            
+            # 更新后端代码
+            if [ -d "kdemo/.git" ]; then
+              echo "Updating kdemo backend repository..."
+              cd kdemo
+              git pull origin main
+              cd ..
+            fi
+
+            # 4. 重启容器
+            # 只重启 web 容器 (Django + uWSGI)
+            # 数据库(db), Redis, Nginx 只要配置没变，就不需要重启
+            # web 容器重启会触发 start.sh，自动解压新的 dist.zip 和执行 migrate
             docker-compose restart web
             
-            # 可选: 清理未使用的镜像
-            # docker image prune -f
+            # 如果 Nginx 配置有变动，才需要重启 Nginx
+            # docker-compose restart nginx
