@@ -96,7 +96,12 @@ jobs:
             # 只重启 web 容器 (Django + uWSGI)
             # 数据库(db), Redis, Nginx 只要配置没变，就不需要重启
             # web 容器重启会触发 start.sh，自动解压新的 dist.zip 和执行 migrate
-            docker-compose restart web
+            
+            if command -v docker-compose &> /dev/null; then
+                docker-compose restart web
+            else
+                docker compose restart web
+            fi
             
             # 如果 Nginx 配置有变动，才需要重启 Nginx
             # docker-compose restart nginx
