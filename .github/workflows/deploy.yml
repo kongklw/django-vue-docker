@@ -45,6 +45,9 @@ jobs:
         # 解压后会包含 dist/ 目录结构，适配 start.sh 的逻辑
         run: zip -r dist.zip dist/
 
+      - name: Zip Backend Code
+        run: zip -r backend.zip kdemo/ -x "kdemo/media/*" "kdemo/static/*" "kdemo/frontend/dist.zip" "*/__pycache__/*" "*/.git/*" "*.pyc"
+
       # ----------------------------------------------------------------
       # 2. 部署到服务器 (Deploy to Server)
       # ----------------------------------------------------------------
@@ -62,6 +65,15 @@ jobs:
           target: "${{ secrets.PROJECT_PATH }}/kdemo/frontend/"
           strip_components: 1 # 去掉 kdemo-fe/ 前缀
 
+      - name: Upload Backend Code to Server
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "backend.zip,docker-compose.yaml"
+          target: "${{ secrets.PROJECT_PATH }}/"
+
       # 步骤 2.2: SSH 登录服务器，拉取最新代码并只重启 Web 容器
       - name: Update Code and Restart Web
         uses: appleboy/ssh-action@master
@@ -74,24 +86,16 @@ jobs:
             # 1. 进入主部署目录 (django-vue-docker)
             cd ${{ secrets.PROJECT_PATH }}
             
-            # 2. 拉取主编排仓库的更新 (如果有)
-            git pull origin main || true
-            
-            # 3. 处理子模块/独立仓库更新
-            # 既然你的 GitHub 上显示 kdemo 和 kdemo-fe 是独立仓库
-            # 那么服务器上的目录结构应该是:
-            # django-vue-docker/
-            #   ├── kdemo/ (这应该是一个独立的 git repo)
-            #   ├── kdemo-fe/ (这应该是一个独立的 git repo)
-            
-            # 更新后端代码
-            if [ -d "kdemo/.git" ]; then
-              echo "Updating kdemo backend repository..."
-              cd kdemo
-              git pull origin main
-              cd ..
+            # 2. 解压后端代码覆盖更新
+            if [ -f "backend.zip" ]; then
+              echo "Unzipping backend code..."
+              unzip -o backend.zip
+              rm backend.zip
             fi
-
+            
+            # 3. 拉取主编排仓库的更新 (可选，如果有其他非kdemo目录的更新)
+            # git pull origin main || true
+            
             # 4. 重启容器
             # 只重启 web 容器 (Django + uWSGI)
             # 数据库(db), Redis, Nginx 只要配置没变，就不需要重启
