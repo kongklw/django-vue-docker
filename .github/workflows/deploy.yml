@@ -46,7 +46,7 @@ jobs:
         run: zip -r dist.zip dist/
 
       - name: Zip Backend Code
-        run: zip -r backend.zip kdemo/ -x "kdemo/media/*" "kdemo/static/*" "kdemo/frontend/dist.zip" "*/__pycache__/*" "*/.git/*" "*.pyc"
+        run: zip -r backend.zip kdemo/ compose/ -x "kdemo/media/*" "kdemo/static/*" "kdemo/frontend/dist.zip" "*/__pycache__/*" "*/.git/*" "*.pyc"
 
       # ----------------------------------------------------------------
       # 2. 部署到服务器 (Deploy to Server)
@@ -74,38 +74,25 @@ jobs:
           source: "backend.zip,docker-compose.yaml"
           target: "${{ secrets.PROJECT_PATH }}/"
 
-      # 步骤 2.2: SSH 登录服务器，拉取最新代码并只重启 Web 容器
-      - name: Update Code and Restart Web
-        uses: appleboy/ssh-action@master
+      - name: Deploy to ECS
+        uses: appleboy/ssh-action@v0.1.8
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          # port: ${{ secrets.SSH_PORT }}
           script: |
-            # 1. 进入主部署目录 (django-vue-docker)
+            set -e
             cd ${{ secrets.PROJECT_PATH }}
             
-            # 2. 解压后端代码覆盖更新
             if [ -f "backend.zip" ]; then
               echo "Unzipping backend code..."
               unzip -o backend.zip
               rm backend.zip
             fi
             
-            # 3. 拉取主编排仓库的更新 (可选，如果有其他非kdemo目录的更新)
-            # git pull origin main || true
-            
-            # 4. 重启容器
-            # 只重启 web 容器 (Django + uWSGI)
-            # 数据库(db), Redis, Nginx 只要配置没变，就不需要重启
-            # web 容器重启会触发 start.sh，自动解压新的 dist.zip 和执行 migrate
-            
-            if command -v docker-compose &> /dev/null; then
-                docker-compose restart web
-            else
-                docker compose restart web
-            fi
-            
-            # 如果 Nginx 配置有变动，才需要重启 Nginx
-            # docker-compose restart nginx
+            if command -v docker-compose >/dev/null 2>&1; then dc="docker-compose"; else dc="docker compose"; fi
+            $dc build web
+            $dc up -d web
+            $dc restart nginx
+            $dc exec -T web python manage.py migrate
+            $dc exec -T web python manage.py collectstatic --noinput
