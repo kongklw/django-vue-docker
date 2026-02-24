@@ -17,53 +17,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # ----------------------------------------------------------------
-      # 1. 前端处理 (Frontend Handling)
-      #    如果是 django-vue-docker 这种 monorepo 结构，或者 kdemo-fe 独立仓库推送
-      #    这里假设这是 monorepo 或者包含 kdemo-fe 目录
-      # ----------------------------------------------------------------
-      - name: Setup Node.js
-        if: hashFiles('kdemo-fe/package.json') != ''
-        uses: actions/setup-node@v3
-        with:
-          node-version: '16'
-
-      - name: Install Frontend Dependencies
-        if: hashFiles('kdemo-fe/package.json') != ''
-        working-directory: ./kdemo-fe
-        run: npm install
-
-      - name: Build Frontend
-        if: hashFiles('kdemo-fe/package.json') != ''
-        working-directory: ./kdemo-fe
-        run: npm run build:prod
-
-      - name: Zip Frontend Dist
-        if: hashFiles('kdemo-fe/package.json') != ''
-        working-directory: ./kdemo-fe
-        # 压缩 dist 目录为 dist.zip
-        # 解压后会包含 dist/ 目录结构，适配 start.sh 的逻辑
-        run: zip -r dist.zip dist/
-
       - name: Zip Backend Code
         run: zip -r backend.zip kdemo/ compose/ -x "kdemo/media/*" "kdemo/static/*" "kdemo/frontend/dist.zip" "*/__pycache__/*" "*/.git/*" "*.pyc"
 
       # ----------------------------------------------------------------
       # 2. 部署到服务器 (Deploy to Server)
       # ----------------------------------------------------------------
-      
-      # 步骤 2.1: 如果有前端构建产物，上传到服务器
-      - name: Upload Frontend Artifact to Server
-        if: hashFiles('kdemo-fe/dist.zip') != ''
-        uses: appleboy/scp-action@master
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          # port: ${{ secrets.SSH_PORT }}
-          source: "kdemo-fe/dist.zip"
-          target: "${{ secrets.PROJECT_PATH }}/kdemo/frontend/"
-          strip_components: 1 # 去掉 kdemo-fe/ 前缀
 
       - name: Upload Backend Code to Server
         uses: appleboy/scp-action@master
