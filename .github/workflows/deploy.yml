@@ -52,6 +52,6 @@ jobs:
             if command -v docker-compose >/dev/null 2>&1; then dc="docker-compose"; else dc="docker compose"; fi
             $dc build web
             $dc up -d web
-            $dc restart nginx
+            $dc up -d --force-recreate nginx
             $dc exec -T web python manage.py migrate
             $dc exec -T web python manage.py collectstatic --noinput
